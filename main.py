@@ -1,5 +1,4 @@
 import datetime
-
 from flask import Flask, render_template, redirect, url_for
 from flask_bootstrap import Bootstrap5
 from flask_sqlalchemy import SQLAlchemy
@@ -7,7 +6,6 @@ from flask_wtf import FlaskForm
 from wtforms import StringField, SubmitField
 from wtforms.validators import DataRequired, URL
 from flask_ckeditor import CKEditor, CKEditorField
-from datetime import date
 
 
 app = Flask(__name__)
@@ -46,21 +44,17 @@ class NewPost(FlaskForm):
 
 @app.route('/')
 def get_all_posts():
-    # TODO: Query the database for all the posts. Convert the data to a python list.
     result = db.session.execute(db.select(BlogPost))
     posts = result.scalars().all()
     return render_template("index.html", all_posts=posts)
 
 
-# TODO: Add a route so that you can click on individual posts.
 @app.route('/post/<int:post_id>')
 def show_post(post_id):
-    # TODO: Retrieve a BlogPost from the database based on the post_id
     requested_post = db.get_or_404(BlogPost, post_id)
     return render_template("post.html", post=requested_post)
 
 
-# TODO: add_new_post() to create a new blog post
 @app.route('/new-post', methods=['GET', 'POST'])
 def add():
     form = NewPost()
@@ -81,7 +75,6 @@ def add():
     return render_template('make-post.html', form=form)
 
 
-# TODO: edit_post() to change an existing blog post
 @app.route('/edit-post/<int:post_id>', methods=['GET', 'POST'])
 def edit_post(post_id):
     post = db.get_or_404(BlogPost, post_id)
@@ -103,9 +96,15 @@ def edit_post(post_id):
     return render_template('make-post.html', form=edit_form, is_edit=True)
 
 
-# TODO: delete_post() to remove a blog post from the database
+@app.route('/delete/<int:post_id>')
+def delete(post_id):
+    post = db.get_or_404(BlogPost, post_id)
+    if post:
+        db.session.delete(post)
+        db.session.commit()
+        return redirect(url_for('get_all_posts'))
 
-# Below is the code from previous lessons. No changes needed.
+
 @app.route("/about")
 def about():
     return render_template("about.html")
