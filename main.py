@@ -2,10 +2,9 @@ import datetime
 from flask import Flask, render_template, redirect, url_for
 from flask_bootstrap import Bootstrap5
 from flask_sqlalchemy import SQLAlchemy
-from flask_wtf import FlaskForm
-from wtforms import StringField, SubmitField
-from wtforms.validators import DataRequired, URL
-from flask_ckeditor import CKEditor, CKEditorField
+from flask_ckeditor import CKEditor
+from werkzeug.security import generate_password_hash, check_password_hash
+from forms import NewPost, RegisterForm
 
 
 app = Flask(__name__)
@@ -13,7 +12,7 @@ app.config['SECRET_KEY'] = '8BYkEfBA6O6donzWlSihBXox7C0sKR6b'
 Bootstrap5(app)
 ckeditor = CKEditor(app)
 # CONNECT TO DB
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///posts.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///blog.db'
 db = SQLAlchemy()
 db.init_app(app)
 
@@ -29,17 +28,15 @@ class BlogPost(db.Model):
     img_url = db.Column(db.String(250), nullable=False)
 
 
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(250), unique=True, nullable=False)
+    name = db.Column(db.String(250), nullable=False)
+    password = db.Column(db.String(250), nullable=False)
+
+
 with app.app_context():
     db.create_all()
-
-
-class NewPost(FlaskForm):
-    title = StringField('Blog Title', validators=[DataRequired()])
-    subtitle = StringField('Subtitle', validators=[DataRequired()])
-    body = CKEditorField('Body')
-    author = StringField('Author', validators=[DataRequired()])
-    img_url = StringField('URL Image', validators=[DataRequired(), URL()])
-    submit = SubmitField('Submit')
 
 
 @app.route('/')
@@ -105,6 +102,21 @@ def delete(post_id):
         return redirect(url_for('get_all_posts'))
 
 
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    register_form = RegisterForm()
+    if register_form.validate_on_submit():
+        new_user = User(
+            email=register_form.email.data,
+            password=generate_password_hash(register_form.password.data, method='pbkdf2:sha256', salt_length=8),
+            name=register_form.name.data
+        )
+        db.session.add(new_user)
+        db.session.commit()
+        return redirect(url_for('get_all_posts'))
+    return render_template('register.html', form=register_form)
+
+
 @app.route("/about")
 def about():
     return render_template("about.html")
@@ -113,6 +125,16 @@ def about():
 @app.route("/contact")
 def contact():
     return render_template("contact.html")
+
+
+@app.route("/login")
+def login():
+    pass
+
+
+@app.route("/logout")
+def logout():
+    pass
 
 
 if __name__ == "__main__":
