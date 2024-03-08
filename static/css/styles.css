@@ -10795,4 +10795,7 @@ header.masthead .post-heading .meta a {
   .post-preview > a > .post-title {
     font-size: 2.25rem;
   }
+.flash {
+  color: red;
+}
 }
