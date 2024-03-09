@@ -27,11 +27,14 @@
           <h2 class="post-title">{{ post.title }}</h2>
           <h3 class="post-subtitle">{{ post.subtitle }}</h3>
         </a>
-        <a href="{{ url_for('delete', post_id=post.id) }}"> ✘ </a>
         <p class="post-meta">
           Posted by
-          <a href="#">{{post.author}}</a>
-          on {{post.date}}
+          <a href="#">{{ post.author.name }}</a>
+          on {{ post.date }}
+          <!-- Only show delete button if user id is 1 (admin user) -->
+          {% if current_user.id == 1: %}
+          <a href="{{ url_for('delete', post_id=post.id) }}"> ✘ </a>
+          {% endif %}
         </p>
       </div>
       <!-- Divider-->
@@ -39,14 +42,15 @@
       {% endfor %}
 
       <!-- New Post -->
+      {% if current_user.id == 1 %}
       <div class="d-flex justify-content-end mb-4">
-      <!-- TODO: Adding new posts -->
         <a
           class="btn btn-primary float-right"
           href="{{ url_for('add') }}"
           >Create New Post</a
         >
       </div>
+      {% endif %}
 
       <!-- Pager-->
       <div class="d-flex justify-content-end mb-4">

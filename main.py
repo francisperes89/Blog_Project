@@ -1,11 +1,15 @@
 import datetime
-from flask import Flask, render_template, redirect, url_for, flash
+from flask import Flask, render_template, redirect, url_for, flash, abort
 from flask_bootstrap import Bootstrap5
 from flask_sqlalchemy import SQLAlchemy
 from flask_ckeditor import CKEditor
 from werkzeug.security import generate_password_hash, check_password_hash
-from forms import NewPost, RegisterForm, LoginForm
+from forms import NewPost, RegisterForm, LoginForm, CommentForm
 from flask_login import UserMixin, login_user, LoginManager, login_required, current_user, logout_user
+from functools import wraps
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy import ForeignKey, Integer, String, Text, Column
+from flask_gravatar import Gravatar
 
 
 app = Flask(__name__)
@@ -30,26 +34,66 @@ db = SQLAlchemy()
 db.init_app(app)
 
 
+# For adding profile images to the comment section
+gravatar = Gravatar(app,
+                    size=100,
+                    rating='g',
+                    default='retro',
+                    force_default=False,
+                    force_lower=False,
+                    use_ssl=False,
+                    base_url=None)
+
+
 # CONFIGURE TABLE
-class BlogPost(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(250), unique=True, nullable=False)
-    subtitle = db.Column(db.String(250), nullable=False)
-    date = db.Column(db.String(250), nullable=False)
-    body = db.Column(db.Text, nullable=False)
-    author = db.Column(db.String(250), nullable=False)
-    img_url = db.Column(db.String(250), nullable=False)
-
-
 class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(250), unique=True, nullable=False)
-    name = db.Column(db.String(250), nullable=False)
-    password = db.Column(db.String(250), nullable=False)
+    __tablename__ = "users"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(100), unique=True)
+    password: Mapped[str] = mapped_column(String(100))
+    name: Mapped[str] = mapped_column(String(100))
+    #This will act like a List of BlogPost objects attached to each User.
+    #The "author" refers to the author property in the BlogPost class.
+    posts = relationship("BlogPost", back_populates="author")
+    comments = relationship("Comment", back_populates="comment_author")
+
+
+class BlogPost(db.Model):
+    __tablename__ = "blog_posts"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Create Foreign Key, "users.id" the users refers to the tablename of User.
+    author_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
+    # Create reference to the User object. The "posts" refers to the posts property in the User class.
+    author = relationship("User", back_populates="posts")
+    title: Mapped[str] = mapped_column(String(250), unique=True, nullable=False)
+    subtitle: Mapped[str] = mapped_column(String(250), nullable=False)
+    date: Mapped[str] = mapped_column(String(250), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    img_url: Mapped[str] = mapped_column(String(250), nullable=False)
+    comments = relationship("Comment", back_populates="parent_post")
+
+
+class Comment(db.Model):
+    __tablename__ = "comments"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    author_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
+    comment_author = relationship("User", back_populates="comments")
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    post_id: Mapped[int] = mapped_column(Integer, ForeignKey("blog_posts.id"))
+    parent_post = relationship("BlogPost", back_populates="comments")
 
 
 with app.app_context():
     db.create_all()
+
+
+def admin_only(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.id == 1:
+            return abort(403)
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 @app.route('/')
@@ -59,13 +103,26 @@ def get_all_posts():
     return render_template("index.html", all_posts=posts, logged_in=current_user.is_authenticated)
 
 
-@app.route('/post/<int:post_id>')
+@app.route('/post/<int:post_id>', methods=['GET', 'POST'])
 def show_post(post_id):
+    form = CommentForm()
     requested_post = db.get_or_404(BlogPost, post_id)
-    return render_template("post.html", post=requested_post, logged_in=current_user.is_authenticated)
+    if form.validate_on_submit():
+        if not current_user.is_authenticated:
+            flash("You need to login or register to comment.")
+            return redirect(url_for('login'))
+        new_comment = Comment(
+            text=form.comment.data,
+            comment_author=current_user,
+            parent_post=requested_post
+        )
+        db.session.add(new_comment)
+        db.session.commit()
+    return render_template("post.html", post=requested_post, logged_in=current_user.is_authenticated, form=form)
 
 
 @app.route('/new-post', methods=['GET', 'POST'])
+@admin_only
 def add():
     form = NewPost()
     today_date = datetime.datetime.now()
@@ -75,7 +132,7 @@ def add():
             subtitle=form.subtitle.data,
             date=today_date.strftime('%B %d, %Y'),
             body=form.body.data,
-            author=form.author.data,
+            author=current_user,
             img_url=form.img_url.data
         )
         with app.app_context():
@@ -86,6 +143,7 @@ def add():
 
 
 @app.route('/edit-post/<int:post_id>', methods=['GET', 'POST'])
+@admin_only
 def edit_post(post_id):
     post = db.get_or_404(BlogPost, post_id)
     edit_form = NewPost(
@@ -107,6 +165,7 @@ def edit_post(post_id):
 
 
 @app.route('/delete/<int:post_id>')
+@admin_only
 def delete(post_id):
     post = db.get_or_404(BlogPost, post_id)
     if post:
